@@ -215,9 +215,61 @@ export const signOutUser = async () => {
 // JOBS CRUD HELPER FUNCTIONS (STRICT SUPABASE DIRECT WRITE)
 // ------------------------------------------
 
+export const syncLocalJobsToCloud = async () => {
+  if (!isSupabaseConfigured()) return { count: 0 };
+  const localJobs = getLocalJobs();
+  if (localJobs.length === 0) return { count: 0 };
+
+  try {
+    const { data: cloudData, error: fetchErr } = await supabase.from('jobs').select('id');
+    if (fetchErr) return { count: 0 };
+
+    const cloudIds = new Set((cloudData || []).map((j) => j.id));
+    const unsyncedJobs = localJobs.filter((j) => !cloudIds.has(j.id));
+
+    let syncedCount = 0;
+    for (const job of unsyncedJobs) {
+      const payload = {
+        company_name: job.company_name,
+        position: job.position,
+        platform: job.platform || 'MagangHub',
+        location: job.location || '',
+        job_url: job.job_url || '',
+        applied_date: job.applied_date || new Date().toISOString().split('T')[0],
+        status: job.status || 'Wishlist',
+        salary: job.salary || '',
+        notes: job.notes || '',
+      };
+      if (job.user_id) payload.user_id = job.user_id;
+
+      let { error } = await supabase.from('jobs').insert([payload]);
+
+      if (error && (error.code === '23514' || String(error.message || '').includes('jobs_status_check'))) {
+        const fallbackPayload = { ...payload, status: 'Screening' };
+        error = (await supabase.from('jobs').insert([fallbackPayload])).error;
+      }
+      if (error && (error.code === 'PGRST204' || String(error.message || '').toLowerCase().includes('platform') || JSON.stringify(error).toLowerCase().includes('platform'))) {
+        const legacyPayload = { ...payload };
+        delete legacyPayload.platform;
+        error = (await supabase.from('jobs').insert([legacyPayload])).error;
+      }
+
+      if (!error) syncedCount++;
+    }
+
+    return { count: syncedCount };
+  } catch (err) {
+    console.error('Error syncing local jobs to cloud:', err);
+    return { count: 0 };
+  }
+};
+
 export const getJobs = async () => {
   if (isSupabaseConfigured()) {
     try {
+      // Auto background sync for local-only jobs
+      syncLocalJobsToCloud().catch(() => {});
+
       const { data, error } = await supabase
         .from('jobs')
         .select('*')

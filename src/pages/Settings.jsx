@@ -9,15 +9,34 @@ import {
   ShieldCheck, 
   Sparkles,
   LogOut,
-  Palette
+  Palette,
+  CloudUpload,
+  Loader2
 } from 'lucide-react';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { isSupabaseConfigured, syncLocalJobsToCloud } from '../lib/supabase';
 import { useToast } from '../components/Toast';
 
 export default function Settings({ user, onLogout }) {
   const [copied, setCopied] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const { addToast } = useToast();
   const isConfigured = isSupabaseConfigured();
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await syncLocalJobsToCloud();
+      if (res.count > 0) {
+        addToast(`Berhasil menyinkronkan ${res.count} data lamaran ke Supabase Cloud! ☁️`, 'success');
+      } else {
+        addToast('Semua data lamaran Anda sudah tersinkron ke Cloud! ☁️', 'info');
+      }
+    } catch (err) {
+      addToast('Gagal menyinkronkan data: ' + err.message, 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const sqlSchemaSnippet = `-- SKRIP SUPABASE SQL UNTUK TABEL JOBS, PLATFORM & RLS
 CREATE TABLE IF NOT EXISTS public.jobs (
@@ -96,7 +115,15 @@ USING (true) WITH CHECK (true);
           </div>
         </div>
 
-        <div className="pt-2 flex justify-end">
+        <div className="pt-2 flex flex-wrap items-center justify-end gap-3">
+          <button
+            onClick={handleManualSync}
+            disabled={isSyncing}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 text-xs font-bold transition-colors disabled:opacity-50"
+          >
+            {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />}
+            <span>Sinkronkan Data ke Cloud ☁️</span>
+          </button>
           <button
             onClick={onLogout}
             className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 text-xs font-bold transition-colors"
