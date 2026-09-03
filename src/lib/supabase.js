@@ -1,0 +1,408 @@
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+const LOCAL_JOBS_KEY = 'job_tracker_local_jobs_v6';
+const LOCAL_USER_KEY = 'job_tracker_local_user';
+
+export const isSupabaseConfigured = () => {
+  return Boolean(
+    supabaseUrl &&
+    supabaseAnonKey &&
+    !supabaseUrl.includes('your-supabase-project-id') &&
+    !supabaseAnonKey.includes('your-supabase-anon-key')
+  );
+};
+
+export const supabase = createClient(
+  isSupabaseConfigured() ? supabaseUrl : 'https://placeholder.supabase.co',
+  isSupabaseConfigured() ? supabaseAnonKey : 'placeholder-key'
+);
+
+export const getLocalSessionUser = () => {
+  try {
+    const saved = localStorage.getItem(LOCAL_USER_KEY);
+    return saved ? JSON.parse(saved) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const setLocalSessionUser = (userObj) => {
+  if (userObj) {
+    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(userObj));
+  } else {
+    localStorage.removeItem(LOCAL_USER_KEY);
+  }
+};
+
+// Generate a valid random UUID v4
+const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c =>
+    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+  );
+};
+
+const getLocalJobs = () => {
+  try {
+    const raw = localStorage.getItem(LOCAL_JOBS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveLocalJobs = (jobs) => {
+  try {
+    localStorage.setItem(LOCAL_JOBS_KEY, JSON.stringify(jobs));
+  } catch (e) {
+    console.error('Error saving local jobs:', e);
+  }
+};
+
+const LOCAL_ACCOUNTS_KEY = 'job_tracker_local_accounts_v1';
+
+export const PRESET_ACCOUNTS = [
+  {
+    id: '11111111-1111-4111-8111-111111111111',
+    email: 'aufariq123@gmail.com',
+    password: 'aufariq123',
+    fullName: 'Aufariq',
+    role: 'Job Seeker',
+  },
+  {
+    id: '22222222-2222-4222-8222-222222222222',
+    email: 'amelia@gmail.com',
+    password: 'amel123',
+    fullName: 'Amelia',
+    role: 'UI/UX Designer',
+  },
+];
+
+export const getLocalAccounts = () => {
+  try {
+    const raw = localStorage.getItem(LOCAL_ACCOUNTS_KEY);
+    const customAccounts = raw ? JSON.parse(raw) : [];
+    return [...PRESET_ACCOUNTS, ...customAccounts];
+  } catch {
+    return PRESET_ACCOUNTS;
+  }
+};
+
+export const saveLocalAccount = (accountObj) => {
+  try {
+    const accounts = getLocalAccounts().filter(acc => acc.email !== accountObj.email);
+    accounts.push(accountObj);
+    localStorage.setItem(LOCAL_ACCOUNTS_KEY, JSON.stringify(accounts.filter(a => !PRESET_ACCOUNTS.some(p => p.email === a.email))));
+  } catch (e) {
+    console.error('Error saving local account:', e);
+  }
+};
+
+// ------------------------------------------
+// AUTH HELPER FUNCTIONS
+// ------------------------------------------
+
+export const signUpUser = async (email, password, fullName = '') => {
+  const normEmail = email.trim().toLowerCase();
+
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: normEmail,
+        password,
+        options: { data: { full_name: fullName } }
+      });
+
+      if (!error && data?.user) {
+        setLocalSessionUser(data.user);
+        return { data, error: null };
+      }
+    } catch (err) {
+      console.warn('Supabase signUp error, falling back to local:', err);
+    }
+  }
+
+  // Local fallback registration
+  const newUserId = generateUUID();
+  const localUserObj = {
+    id: newUserId,
+    email: normEmail,
+    password,
+    fullName: fullName || normEmail.split('@')[0],
+  };
+
+  saveLocalAccount(localUserObj);
+
+  const formattedUser = {
+    id: newUserId,
+    email: normEmail,
+    user_metadata: { full_name: localUserObj.fullName },
+    app_metadata: { provider: 'email' },
+    created_at: new Date().toISOString()
+  };
+
+  setLocalSessionUser(formattedUser);
+  return { data: { user: formattedUser }, error: null };
+};
+
+export const signInUser = async (email, password) => {
+  const normEmail = email.trim().toLowerCase();
+
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: normEmail,
+        password,
+      });
+
+      if (!error && data?.user) {
+        setLocalSessionUser(data.user);
+        return { data, error: null };
+      }
+    } catch (err) {
+      console.warn('Supabase signIn error, checking local preset accounts:', err);
+    }
+  }
+
+  // Fallback check against preset and registered accounts
+  const allAccounts = getLocalAccounts();
+  const matched = allAccounts.find(
+    (acc) => acc.email.toLowerCase() === normEmail && acc.password === password
+  );
+
+  if (matched) {
+    const formattedUser = {
+      id: matched.id || generateUUID(),
+      email: matched.email,
+      user_metadata: { full_name: matched.fullName },
+      app_metadata: { provider: 'email' },
+      created_at: new Date().toISOString()
+    };
+
+    setLocalSessionUser(formattedUser);
+    return { data: { user: formattedUser }, error: null };
+  }
+
+  return { 
+    data: null, 
+    error: { message: 'Email atau kata sandi yang Anda masukkan salah.' } 
+  };
+};
+
+export const signOutUser = async () => {
+  setLocalSessionUser(null);
+  if (isSupabaseConfigured()) {
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn('Signout error:', err);
+    }
+  }
+  return { error: null };
+};
+
+// ------------------------------------------
+// JOBS CRUD HELPER FUNCTIONS (STRICT SUPABASE DIRECT WRITE)
+// ------------------------------------------
+
+export const getJobs = async () => {
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase
+        .from('jobs')
+        .select('*')
+        .order('created_at', { ascending: false });
+        
+      if (!error && Array.isArray(data)) {
+        saveLocalJobs(data);
+        return { data, isCloud: true, error: null };
+      } else if (error) {
+        console.warn('Supabase getJobs warning:', error.message);
+      }
+    } catch (err) {
+      console.warn('Supabase getJobs catch:', err);
+    }
+  }
+
+  return { data: getLocalJobs(), isCloud: false, error: null };
+};
+
+export const addJob = async (jobData) => {
+  let remoteJob = null;
+  let supabaseErrorMsg = null;
+
+  if (isSupabaseConfigured()) {
+    try {
+      const authUser = await getLocalSessionUser();
+      const isValidUUID = (id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      const validUserId = authUser?.id && isValidUUID(authUser.id) ? authUser.id : (isValidUUID(generateUUID()) ? generateUUID() : null);
+
+      const payload = {
+        company_name: jobData.company_name,
+        position: jobData.position,
+        platform: jobData.platform || 'MagangHub',
+        location: jobData.location || '',
+        job_url: jobData.job_url || '',
+        applied_date: jobData.applied_date || new Date().toISOString().split('T')[0],
+        status: jobData.status || 'Wishlist',
+        salary: jobData.salary || '',
+        notes: jobData.notes || '',
+      };
+
+      if (validUserId) {
+        payload.user_id = validUserId;
+      }
+
+      let { data, error } = await supabase
+        .from('jobs')
+        .insert([payload])
+        .select()
+        .single();
+
+      if (error && error.message.includes("Could not find the 'platform' column")) {
+        // Fallback retry without platform column for legacy Supabase schema
+        const legacyPayload = { ...payload };
+        delete legacyPayload.platform;
+        const retry = await supabase
+          .from('jobs')
+          .insert([legacyPayload])
+          .select()
+          .single();
+        if (!retry.error && retry.data) {
+          data = { ...retry.data, platform: payload.platform };
+          error = null;
+        }
+      }
+
+      if (!error && data) {
+        remoteJob = data;
+      } else if (error) {
+        supabaseErrorMsg = error.message;
+        console.error('Supabase direct insert error:', error);
+      }
+    } catch (err) {
+      supabaseErrorMsg = err.message;
+      console.error('Supabase direct insert catch:', err);
+    }
+  }
+
+  if (remoteJob) {
+    const currentJobs = getLocalJobs();
+    saveLocalJobs([remoteJob, ...currentJobs.filter(j => j.id !== remoteJob.id)]);
+    return { data: remoteJob, isCloud: true, error: null };
+  }
+
+  // Fallback local job if Supabase is offline
+  const newJob = {
+    id: generateUUID(),
+    company_name: jobData.company_name,
+    position: jobData.position,
+    platform: jobData.platform || 'MagangHub',
+    location: jobData.location || '',
+    job_url: jobData.job_url || '',
+    applied_date: jobData.applied_date || new Date().toISOString().split('T')[0],
+    status: jobData.status || 'Wishlist',
+    salary: jobData.salary || '',
+    notes: jobData.notes || '',
+    created_at: new Date().toISOString()
+  };
+
+  const currentJobs = getLocalJobs();
+  const updatedJobs = [newJob, ...currentJobs.filter(j => j.id !== newJob.id)];
+  saveLocalJobs(updatedJobs);
+
+  return { data: newJob, isCloud: false, supabaseErrorMsg, error: null };
+};
+
+export const updateJob = async (id, jobData) => {
+  let remoteSuccess = false;
+
+  if (isSupabaseConfigured()) {
+    try {
+      const payload = {
+        company_name: jobData.company_name,
+        position: jobData.position,
+        platform: jobData.platform || 'MagangHub',
+        location: jobData.location || '',
+        job_url: jobData.job_url || '',
+        applied_date: jobData.applied_date,
+        status: jobData.status,
+        salary: jobData.salary || '',
+        notes: jobData.notes || '',
+        updated_at: new Date().toISOString()
+      };
+
+      let { data, error } = await supabase
+        .from('jobs')
+        .update(payload)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error && error.message.includes("Could not find the 'platform' column")) {
+        const legacyPayload = { ...payload };
+        delete legacyPayload.platform;
+        const retry = await supabase
+          .from('jobs')
+          .update(legacyPayload)
+          .eq('id', id)
+          .select()
+          .single();
+        if (!retry.error && retry.data) {
+          data = { ...retry.data, platform: payload.platform };
+          error = null;
+        }
+      }
+
+      if (!error && data) {
+        remoteSuccess = true;
+        const currentJobs = getLocalJobs();
+        saveLocalJobs(currentJobs.map((j) => (j.id === id ? data : j)));
+        return { data, isCloud: true, error: null };
+      }
+    } catch (err) {
+      console.warn('Supabase updateJob error:', err);
+    }
+  }
+
+  const currentJobs = getLocalJobs();
+  const updatedJobs = currentJobs.map((j) => (j.id === id ? { ...j, ...jobData } : j));
+  saveLocalJobs(updatedJobs);
+
+  return { data: { id, ...jobData }, isCloud: remoteSuccess, error: null };
+};
+
+export const deleteJob = async (id) => {
+  let remoteSuccess = false;
+
+  if (isSupabaseConfigured()) {
+    try {
+      const { error } = await supabase
+        .from('jobs')
+        .delete()
+        .eq('id', id);
+
+      if (!error) {
+        remoteSuccess = true;
+        const currentJobs = getLocalJobs();
+        saveLocalJobs(currentJobs.filter((j) => j.id !== id));
+        return { isCloud: true, error: null };
+      }
+    } catch (err) {
+      console.warn('Supabase deleteJob error:', err);
+    }
+  }
+
+  const currentJobs = getLocalJobs();
+  const updatedJobs = currentJobs.filter((j) => j.id !== id);
+  saveLocalJobs(updatedJobs);
+
+  return { isCloud: false, error: null };
+};
