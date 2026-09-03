@@ -190,18 +190,19 @@ function AppContent() {
   // DIRECT STATUS UPDATE
   const handleUpdateStatus = async (job, newStatus) => {
     if (!job || job.status === newStatus) return;
+
+    // Optimistic UI update for 100% instant reactivity
+    setJobs((prevJobs) =>
+      prevJobs.map((j) => (j.id === job.id ? { ...j, status: newStatus } : j))
+    );
+    addToast(`Status ${job.company_name} diubah menjadi "${newStatus}"!`, 'success');
+
     setActionLoading(true);
     try {
       const updatedData = { ...job, status: newStatus };
-      const res = await updateJob(job.id, updatedData);
-      if (res?.error) {
-        addToast('Gagal memperbarui status: ' + res.error.message, 'error');
-      } else {
-        addToast(`Status ${job.company_name} diubah menjadi "${newStatus}"!`, 'success');
-        await fetchUserJobs();
-      }
+      await updateJob(job.id, updatedData);
     } catch (err) {
-      addToast('Terjadi kesalahan: ' + err.message, 'error');
+      addToast('Terjadi kesalahan saat menyimpan status: ' + err.message, 'error');
     } finally {
       setActionLoading(false);
     }

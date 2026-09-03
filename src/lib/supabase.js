@@ -224,13 +224,23 @@ export const getJobs = async () => {
         .order('created_at', { ascending: false });
         
       if (!error && Array.isArray(data)) {
-        const localMap = new Map(getLocalJobs().map(j => [j.id, j.platform]));
-        const formattedData = data.map(j => ({
-          ...j,
-          platform: j.platform || localMap.get(j.id) || 'MagangHub'
-        }));
-        saveLocalJobs(formattedData);
-        return { data: formattedData, isCloud: true, error: null };
+        const localJobs = getLocalJobs();
+        const cloudIds = new Set(data.map((j) => j.id));
+        const localOnlyJobs = localJobs.filter((j) => !cloudIds.has(j.id));
+        const localMap = new Map(localJobs.map((j) => [j.id, j]));
+
+        const formattedCloudData = data.map((j) => {
+          const loc = localMap.get(j.id);
+          return {
+            ...j,
+            status: j.status || loc?.status || 'Wishlist',
+            platform: j.platform || loc?.platform || 'MagangHub'
+          };
+        });
+
+        const mergedData = [...formattedCloudData, ...localOnlyJobs];
+        saveLocalJobs(mergedData);
+        return { data: mergedData, isCloud: true, error: null };
       } else if (error) {
         console.warn('Supabase getJobs warning:', error.message);
       }
@@ -353,6 +363,21 @@ export const updateJob = async (id, jobData) => {
         .eq('id', id)
         .select()
         .single();
+
+      if (error && error.code === 'PGRST116') {
+        // If row doesn't exist in Supabase Cloud yet, insert it directly
+        const insertPayload = { ...payload };
+        delete insertPayload.updated_at;
+        const insertRes = await supabase
+          .from('jobs')
+          .insert([insertPayload])
+          .select()
+          .single();
+        if (!insertRes.error && insertRes.data) {
+          data = insertRes.data;
+          error = null;
+        }
+      }
 
       if (error && (error.code === 'PGRST204' || String(error.message || '').toLowerCase().includes('platform') || JSON.stringify(error).toLowerCase().includes('platform'))) {
         const legacyPayload = { ...payload };
