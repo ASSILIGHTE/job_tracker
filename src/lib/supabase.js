@@ -233,8 +233,8 @@ export const getJobs = async () => {
           const loc = localMap.get(j.id);
           return {
             ...j,
-            status: j.status || loc?.status || 'Wishlist',
-            platform: j.platform || loc?.platform || 'MagangHub'
+            status: loc?.status || j.status || 'Wishlist',
+            platform: loc?.platform || j.platform || 'MagangHub'
           };
         });
 
@@ -284,6 +284,19 @@ export const addJob = async (jobData) => {
         .select()
         .single();
 
+      if (error && (error.code === '23514' || String(error.message || '').includes('jobs_status_check'))) {
+        const fallbackPayload = { ...payload, status: 'Screening' };
+        const retry = await supabase
+          .from('jobs')
+          .insert([fallbackPayload])
+          .select()
+          .single();
+        if (!retry.error && retry.data) {
+          data = { ...retry.data, status: payload.status };
+          error = null;
+        }
+      }
+
       if (error && (error.code === 'PGRST204' || String(error.message || '').toLowerCase().includes('platform') || JSON.stringify(error).toLowerCase().includes('platform'))) {
         // Fallback retry without platform column for legacy Supabase schema
         const legacyPayload = { ...payload };
@@ -300,7 +313,7 @@ export const addJob = async (jobData) => {
       }
 
       if (!error && data) {
-        remoteJob = { ...data, platform: data.platform || payload.platform || 'MagangHub' };
+        remoteJob = { ...data, status: jobData.status || data.status, platform: data.platform || payload.platform || 'MagangHub' };
       } else if (error) {
         supabaseErrorMsg = error.message;
         console.error('Supabase direct insert error:', error);
@@ -379,6 +392,20 @@ export const updateJob = async (id, jobData) => {
         }
       }
 
+      if (error && (error.code === '23514' || String(error.message || '').includes('jobs_status_check'))) {
+        const fallbackPayload = { ...payload, status: 'Screening' };
+        const retry = await supabase
+          .from('jobs')
+          .update(fallbackPayload)
+          .eq('id', id)
+          .select()
+          .single();
+        if (!retry.error && retry.data) {
+          data = { ...retry.data, status: payload.status };
+          error = null;
+        }
+      }
+
       if (error && (error.code === 'PGRST204' || String(error.message || '').toLowerCase().includes('platform') || JSON.stringify(error).toLowerCase().includes('platform'))) {
         const legacyPayload = { ...payload };
         delete legacyPayload.platform;
@@ -396,7 +423,7 @@ export const updateJob = async (id, jobData) => {
 
       if (!error && data) {
         remoteSuccess = true;
-        const updatedData = { ...data, platform: jobData.platform || data.platform || payload.platform || 'MagangHub' };
+        const updatedData = { ...data, status: jobData.status || data.status, platform: jobData.platform || data.platform || payload.platform || 'MagangHub' };
         const currentJobs = getLocalJobs();
         saveLocalJobs(currentJobs.map((j) => (j.id === id ? updatedData : j)));
         return { data: updatedData, isCloud: true, error: null };

@@ -19,9 +19,10 @@ CREATE TABLE IF NOT EXISTS public.jobs (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 2. Drop strict user_id constraint to allow anonymous inserts if needed
+-- 2. Drop strict user_id constraint & status check constraint to allow custom statuses like Sedang Tes
 ALTER TABLE public.jobs ALTER COLUMN user_id DROP NOT NULL;
 ALTER TABLE public.jobs DROP CONSTRAINT IF EXISTS jobs_user_id_fkey;
+ALTER TABLE public.jobs DROP CONSTRAINT IF EXISTS jobs_status_check;
 
 -- 3. Enable Row Level Security (RLS)
 ALTER TABLE public.jobs ENABLE ROW LEVEL SECURITY;
