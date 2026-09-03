@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const DEFAULT_SUPABASE_URL = 'https://pxogemqbrrtowxrvewfj.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_1ArSa2dM6QJcPS7lpWkFVg_EXcgGgDf';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
 
 const LOCAL_JOBS_KEY = 'job_tracker_local_jobs_v6';
 const LOCAL_USER_KEY = 'job_tracker_local_user';
