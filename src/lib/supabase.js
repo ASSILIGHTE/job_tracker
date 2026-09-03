@@ -8,6 +8,27 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABA
 
 const LOCAL_JOBS_KEY = 'job_tracker_local_jobs_v6';
 const LOCAL_USER_KEY = 'job_tracker_local_user';
+const LOCAL_PLATFORM_MAP_KEY = 'job_tracker_platform_overrides_v2';
+
+const getPlatformOverrideMap = () => {
+  try {
+    const raw = localStorage.getItem(LOCAL_PLATFORM_MAP_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
+
+export const setPlatformOverride = (id, platform) => {
+  if (!id || !platform) return;
+  try {
+    const map = getPlatformOverrideMap();
+    map[id] = platform;
+    localStorage.setItem(LOCAL_PLATFORM_MAP_KEY, JSON.stringify(map));
+  } catch (e) {
+    console.error('Error saving platform override:', e);
+  }
+};
 
 export const isSupabaseConfigured = () => {
   return Boolean(
@@ -266,12 +287,14 @@ export const getJobs = async () => {
       if (!error && Array.isArray(data)) {
         const localJobs = getLocalJobs();
         const localMap = new Map(localJobs.map((j) => [j.id, j]));
+        const platformMap = getPlatformOverrideMap();
 
         const formattedCloudData = data.map((j) => {
           const loc = localMap.get(j.id);
+          const overridePlatform = platformMap[j.id];
           return {
             ...j,
-            platform: j.platform || loc?.platform || 'MagangHub'
+            platform: j.platform || overridePlatform || loc?.platform || 'MagangHub'
           };
         });
 
@@ -298,7 +321,7 @@ export const addJob = async (jobData) => {
       const isValidUUID = (id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
       const validUserId = authUser?.id && isValidUUID(authUser.id) ? authUser.id : (isValidUUID(generateUUID()) ? generateUUID() : null);
 
-      const safeStatus = VALID_CLOUD_STATUSES.includes(jobData.status) ? jobData.status : 'Screening';
+      const safeStatus = VALID_CLOUD_STATUSES.includes(jobData.status) ? jobData.status : 'Wishlist';
 
       // 1. Try full payload with all fields
       const fullPayload = {
@@ -352,6 +375,7 @@ export const addJob = async (jobData) => {
           status: jobData.status || data.status,
           platform: jobData.platform || data.platform || 'MagangHub'
         };
+        setPlatformOverride(remoteJob.id, remoteJob.platform);
       } else if (error) {
         supabaseErrorMsg = error.message;
         console.error('Supabase direct insert error:', error);
@@ -383,6 +407,7 @@ export const addJob = async (jobData) => {
     created_at: new Date().toISOString()
   };
 
+  setPlatformOverride(newJob.id, newJob.platform);
   const currentJobs = getLocalJobs();
   const updatedJobs = [newJob, ...currentJobs.filter(j => j.id !== newJob.id)];
   saveLocalJobs(updatedJobs);
@@ -395,7 +420,7 @@ export const updateJob = async (id, jobData) => {
 
   if (isSupabaseConfigured()) {
     try {
-      const safeStatus = VALID_CLOUD_STATUSES.includes(jobData.status) ? jobData.status : 'Screening';
+      const safeStatus = VALID_CLOUD_STATUSES.includes(jobData.status) ? jobData.status : 'Wishlist';
 
       // 1. Try full payload with all fields
       const fullPayload = {
@@ -461,6 +486,7 @@ export const updateJob = async (id, jobData) => {
           status: jobData.status || data.status,
           platform: jobData.platform || data.platform || 'MagangHub'
         };
+        setPlatformOverride(id, updatedData.platform);
         const currentJobs = getLocalJobs();
         saveLocalJobs(currentJobs.map((j) => (j.id === id ? updatedData : j)));
         return { data: updatedData, isCloud: true, error: null };
@@ -470,6 +496,7 @@ export const updateJob = async (id, jobData) => {
     }
   }
 
+  setPlatformOverride(id, jobData.platform);
   const currentJobs = getLocalJobs();
   const updatedJobs = currentJobs.map((j) => (j.id === id ? { ...j, ...jobData } : j));
   saveLocalJobs(updatedJobs);
