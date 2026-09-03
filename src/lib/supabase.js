@@ -258,9 +258,6 @@ export const syncLocalJobsToCloud = async () => {
 export const getJobs = async () => {
   if (isSupabaseConfigured()) {
     try {
-      // Auto background sync for local-only jobs
-      syncLocalJobsToCloud().catch(() => {});
-
       const { data, error } = await supabase
         .from('jobs')
         .select('*')
@@ -268,22 +265,18 @@ export const getJobs = async () => {
         
       if (!error && Array.isArray(data)) {
         const localJobs = getLocalJobs();
-        const cloudIds = new Set(data.map((j) => j.id));
-        const localOnlyJobs = localJobs.filter((j) => !cloudIds.has(j.id));
         const localMap = new Map(localJobs.map((j) => [j.id, j]));
 
         const formattedCloudData = data.map((j) => {
           const loc = localMap.get(j.id);
           return {
             ...j,
-            status: j.status || loc?.status || 'Wishlist',
             platform: j.platform || loc?.platform || 'MagangHub'
           };
         });
 
-        const mergedData = [...formattedCloudData, ...localOnlyJobs];
-        saveLocalJobs(mergedData);
-        return { data: mergedData, isCloud: true, error: null };
+        saveLocalJobs(formattedCloudData);
+        return { data: formattedCloudData, isCloud: true, error: null };
       } else if (error) {
         console.warn('Supabase getJobs warning:', error.message);
       }
