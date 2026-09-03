@@ -224,8 +224,13 @@ export const getJobs = async () => {
         .order('created_at', { ascending: false });
         
       if (!error && Array.isArray(data)) {
-        saveLocalJobs(data);
-        return { data, isCloud: true, error: null };
+        const localMap = new Map(getLocalJobs().map(j => [j.id, j.platform]));
+        const formattedData = data.map(j => ({
+          ...j,
+          platform: j.platform || localMap.get(j.id) || 'MagangHub'
+        }));
+        saveLocalJobs(formattedData);
+        return { data: formattedData, isCloud: true, error: null };
       } else if (error) {
         console.warn('Supabase getJobs warning:', error.message);
       }
@@ -285,7 +290,7 @@ export const addJob = async (jobData) => {
       }
 
       if (!error && data) {
-        remoteJob = data;
+        remoteJob = { ...data, platform: data.platform || payload.platform || 'MagangHub' };
       } else if (error) {
         supabaseErrorMsg = error.message;
         console.error('Supabase direct insert error:', error);
@@ -366,9 +371,10 @@ export const updateJob = async (id, jobData) => {
 
       if (!error && data) {
         remoteSuccess = true;
+        const updatedData = { ...data, platform: jobData.platform || data.platform || payload.platform || 'MagangHub' };
         const currentJobs = getLocalJobs();
-        saveLocalJobs(currentJobs.map((j) => (j.id === id ? data : j)));
-        return { data, isCloud: true, error: null };
+        saveLocalJobs(currentJobs.map((j) => (j.id === id ? updatedData : j)));
+        return { data: updatedData, isCloud: true, error: null };
       }
     } catch (err) {
       console.warn('Supabase updateJob error:', err);
