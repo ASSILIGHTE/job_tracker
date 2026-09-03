@@ -5,6 +5,7 @@ const STATUS_OPTIONS = [
   'Wishlist',
   'Dilamar',
   'Screening',
+  'Sedang Tes',
   'Interview',
   'Offering',
   'Diterima',

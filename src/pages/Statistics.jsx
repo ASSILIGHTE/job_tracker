@@ -15,6 +15,7 @@ export default function Statistics({ jobs }) {
   const wishlistCount = jobs.filter((j) => j.status === 'Wishlist').length;
   const dilamarCount = jobs.filter((j) => j.status === 'Dilamar').length;
   const screeningCount = jobs.filter((j) => j.status === 'Screening').length;
+  const sedangTesCount = jobs.filter((j) => j.status === 'Sedang Tes').length;
   const interviewCount = jobs.filter((j) => j.status === 'Interview').length;
   const offeringCount = jobs.filter((j) => j.status === 'Offering').length;
   const diterimaCount = jobs.filter((j) => j.status === 'Diterima').length;
@@ -28,8 +29,8 @@ export default function Statistics({ jobs }) {
     ? Math.round((diterimaCount / activeApplied) * 100) 
     : 0;
 
-  // Response rate percentage (Screening + Interview + Offering + Diterima + Ditolak) / activeApplied
-  const respondedCount = screeningCount + interviewCount + offeringCount + diterimaCount + ditolakCount;
+  // Response rate percentage (Screening + Sedang Tes + Interview + Offering + Diterima + Ditolak) / activeApplied
+  const respondedCount = screeningCount + sedangTesCount + interviewCount + offeringCount + diterimaCount + ditolakCount;
   const responseRate = activeApplied > 0
     ? Math.round((respondedCount / activeApplied) * 100)
     : 0;
@@ -46,6 +47,7 @@ export default function Statistics({ jobs }) {
     { label: 'Wishlist', count: wishlistCount, color: 'bg-purple-500', text: 'text-purple-600', barBg: 'bg-purple-100' },
     { label: 'Dilamar', count: dilamarCount, color: 'bg-sky-500', text: 'text-sky-600', barBg: 'bg-sky-100' },
     { label: 'Screening', count: screeningCount, color: 'bg-amber-500', text: 'text-amber-600', barBg: 'bg-amber-100' },
+    { label: 'Sedang Tes', count: sedangTesCount, color: 'bg-blue-500', text: 'text-blue-600', barBg: 'bg-blue-100' },
     { label: 'Interview', count: interviewCount, color: 'bg-orange-500', text: 'text-orange-600', barBg: 'bg-orange-100' },
     { label: 'Offering', count: offeringCount, color: 'bg-fuchsia-500', text: 'text-fuchsia-600', barBg: 'bg-fuchsia-100' },
     { label: 'Diterima', count: diterimaCount, color: 'bg-emerald-500', text: 'text-emerald-600', barBg: 'bg-emerald-100' },

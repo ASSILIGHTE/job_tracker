@@ -5,6 +5,7 @@ const STATUS_OPTIONS = [
   'Wishlist',
   'Dilamar',
   'Screening',
+  'Sedang Tes',
   'Interview',
   'Offering',
   'Diterima',
@@ -19,6 +20,8 @@ export const getStatusBadgeClass = (status) => {
       return 'bg-sky-50 text-sky-700 border-sky-200';
     case 'Screening':
       return 'bg-amber-50 text-amber-700 border-amber-200';
+    case 'Sedang Tes':
+      return 'bg-blue-50 text-blue-700 border-blue-200';
     case 'Interview':
       return 'bg-orange-50 text-orange-700 border-orange-200';
     case 'Offering':

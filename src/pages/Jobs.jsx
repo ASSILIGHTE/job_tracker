@@ -17,6 +17,7 @@ const STATUS_FILTERS = [
   { id: 'Wishlist', label: 'Wishlist' },
   { id: 'Dilamar', label: 'Dilamar' },
   { id: 'Screening', label: 'Screening' },
+  { id: 'Sedang Tes', label: 'Sedang Tes' },
   { id: 'Interview', label: 'Interview' },
   { id: 'Offering', label: 'Offering' },
   { id: 'Diterima', label: 'Diterima' },
