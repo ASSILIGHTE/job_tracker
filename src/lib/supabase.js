@@ -215,7 +215,7 @@ export const signOutUser = async () => {
 // JOBS CRUD HELPER FUNCTIONS (STRICT SUPABASE DIRECT WRITE)
 // ------------------------------------------
 
-const VALID_CLOUD_STATUSES = ['Wishlist', 'Dilamar', 'Screening', 'Interview', 'Offering', 'Diterima', 'Ditolak'];
+const VALID_CLOUD_STATUSES = ['Wishlist', 'Dilamar', 'Screening', 'Sedang Tes', 'Interview', 'Offering', 'Diterima', 'Ditolak'];
 
 export const syncLocalJobsToCloud = async () => {
   if (!isSupabaseConfigured()) return { count: 0 };
@@ -231,7 +231,7 @@ export const syncLocalJobsToCloud = async () => {
 
     let syncedCount = 0;
     for (const job of unsyncedJobs) {
-      const safeStatus = VALID_CLOUD_STATUSES.includes(job.status) ? job.status : 'Screening';
+      const safeStatus = VALID_CLOUD_STATUSES.includes(job.status) ? job.status : 'Wishlist';
       const payload = {
         company_name: job.company_name,
         position: job.position,
@@ -276,8 +276,8 @@ export const getJobs = async () => {
           const loc = localMap.get(j.id);
           return {
             ...j,
-            status: loc?.status || j.status || 'Wishlist',
-            platform: loc?.platform || j.platform || 'MagangHub'
+            status: j.status || loc?.status || 'Wishlist',
+            platform: j.platform || loc?.platform || 'MagangHub'
           };
         });
 
