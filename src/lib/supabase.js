@@ -215,6 +215,8 @@ export const signOutUser = async () => {
 // JOBS CRUD HELPER FUNCTIONS (STRICT SUPABASE DIRECT WRITE)
 // ------------------------------------------
 
+const VALID_CLOUD_STATUSES = ['Wishlist', 'Dilamar', 'Screening', 'Interview', 'Offering', 'Diterima', 'Ditolak'];
+
 export const syncLocalJobsToCloud = async () => {
   if (!isSupabaseConfigured()) return { count: 0 };
   const localJobs = getLocalJobs();
@@ -229,31 +231,20 @@ export const syncLocalJobsToCloud = async () => {
 
     let syncedCount = 0;
     for (const job of unsyncedJobs) {
+      const safeStatus = VALID_CLOUD_STATUSES.includes(job.status) ? job.status : 'Screening';
       const payload = {
         company_name: job.company_name,
         position: job.position,
-        platform: job.platform || 'MagangHub',
         location: job.location || '',
         job_url: job.job_url || '',
         applied_date: job.applied_date || new Date().toISOString().split('T')[0],
-        status: job.status || 'Wishlist',
+        status: safeStatus,
         salary: job.salary || '',
         notes: job.notes || '',
       };
       if (job.user_id) payload.user_id = job.user_id;
 
-      let { error } = await supabase.from('jobs').insert([payload]);
-
-      if (error && (error.code === '23514' || String(error.message || '').includes('jobs_status_check'))) {
-        const fallbackPayload = { ...payload, status: 'Screening' };
-        error = (await supabase.from('jobs').insert([fallbackPayload])).error;
-      }
-      if (error && (error.code === 'PGRST204' || String(error.message || '').toLowerCase().includes('platform') || JSON.stringify(error).toLowerCase().includes('platform'))) {
-        const legacyPayload = { ...payload };
-        delete legacyPayload.platform;
-        error = (await supabase.from('jobs').insert([legacyPayload])).error;
-      }
-
+      const { error } = await supabase.from('jobs').insert([payload]);
       if (!error) syncedCount++;
     }
 
@@ -314,58 +305,60 @@ export const addJob = async (jobData) => {
       const isValidUUID = (id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
       const validUserId = authUser?.id && isValidUUID(authUser.id) ? authUser.id : (isValidUUID(generateUUID()) ? generateUUID() : null);
 
-      const payload = {
+      const safeStatus = VALID_CLOUD_STATUSES.includes(jobData.status) ? jobData.status : 'Screening';
+
+      // 1. Try full payload with all fields
+      const fullPayload = {
         company_name: jobData.company_name,
         position: jobData.position,
         platform: jobData.platform || 'MagangHub',
         location: jobData.location || '',
         job_url: jobData.job_url || '',
         applied_date: jobData.applied_date || new Date().toISOString().split('T')[0],
-        status: jobData.status || 'Wishlist',
+        status: safeStatus,
         salary: jobData.salary || '',
         notes: jobData.notes || '',
       };
-
-      if (validUserId) {
-        payload.user_id = validUserId;
-      }
+      if (validUserId) fullPayload.user_id = validUserId;
 
       let { data, error } = await supabase
         .from('jobs')
-        .insert([payload])
+        .insert([fullPayload])
         .select()
         .single();
 
-      if (error && (error.code === '23514' || String(error.message || '').includes('jobs_status_check'))) {
-        const fallbackPayload = { ...payload, status: 'Screening' };
-        const retry = await supabase
-          .from('jobs')
-          .insert([fallbackPayload])
-          .select()
-          .single();
-        if (!retry.error && retry.data) {
-          data = { ...retry.data, status: payload.status };
-          error = null;
-        }
-      }
+      // 2. If full payload fails due to legacy schema (e.g. missing platform column), try sanitized payload
+      if (error) {
+        const safePayload = {
+          company_name: jobData.company_name,
+          position: jobData.position,
+          location: jobData.location || '',
+          job_url: jobData.job_url || '',
+          applied_date: jobData.applied_date || new Date().toISOString().split('T')[0],
+          status: safeStatus,
+          salary: jobData.salary || '',
+          notes: jobData.notes || '',
+        };
+        if (validUserId) safePayload.user_id = validUserId;
 
-      if (error && (error.code === 'PGRST204' || String(error.message || '').toLowerCase().includes('platform') || JSON.stringify(error).toLowerCase().includes('platform'))) {
-        // Fallback retry without platform column for legacy Supabase schema
-        const legacyPayload = { ...payload };
-        delete legacyPayload.platform;
         const retry = await supabase
           .from('jobs')
-          .insert([legacyPayload])
+          .insert([safePayload])
           .select()
           .single();
+
         if (!retry.error && retry.data) {
-          data = { ...retry.data, platform: payload.platform || 'MagangHub' };
+          data = retry.data;
           error = null;
         }
       }
 
       if (!error && data) {
-        remoteJob = { ...data, status: jobData.status || data.status, platform: data.platform || payload.platform || 'MagangHub' };
+        remoteJob = {
+          ...data,
+          status: jobData.status || data.status,
+          platform: jobData.platform || data.platform || 'MagangHub'
+        };
       } else if (error) {
         supabaseErrorMsg = error.message;
         console.error('Supabase direct insert error:', error);
@@ -409,14 +402,17 @@ export const updateJob = async (id, jobData) => {
 
   if (isSupabaseConfigured()) {
     try {
-      const payload = {
+      const safeStatus = VALID_CLOUD_STATUSES.includes(jobData.status) ? jobData.status : 'Screening';
+
+      // 1. Try full payload with all fields
+      const fullPayload = {
         company_name: jobData.company_name,
         position: jobData.position,
         platform: jobData.platform || 'MagangHub',
         location: jobData.location || '',
         job_url: jobData.job_url || '',
         applied_date: jobData.applied_date,
-        status: jobData.status,
+        status: safeStatus,
         salary: jobData.salary || '',
         notes: jobData.notes || '',
         updated_at: new Date().toISOString()
@@ -424,58 +420,54 @@ export const updateJob = async (id, jobData) => {
 
       let { data, error } = await supabase
         .from('jobs')
-        .update(payload)
+        .update(fullPayload)
         .eq('id', id)
         .select()
         .single();
 
-      if (error && error.code === 'PGRST116') {
-        // If row doesn't exist in Supabase Cloud yet, insert it directly
-        const insertPayload = { ...payload };
-        delete insertPayload.updated_at;
-        const insertRes = await supabase
-          .from('jobs')
-          .insert([insertPayload])
-          .select()
-          .single();
-        if (!insertRes.error && insertRes.data) {
-          data = insertRes.data;
-          error = null;
-        }
-      }
+      // 2. If full payload fails due to legacy schema (e.g. missing platform column or missing row), try safe sanitized payload
+      if (error) {
+        const safePayload = {
+          company_name: jobData.company_name,
+          position: jobData.position,
+          location: jobData.location || '',
+          job_url: jobData.job_url || '',
+          applied_date: jobData.applied_date,
+          status: safeStatus,
+          salary: jobData.salary || '',
+          notes: jobData.notes || '',
+          updated_at: new Date().toISOString()
+        };
 
-      if (error && (error.code === '23514' || String(error.message || '').includes('jobs_status_check'))) {
-        const fallbackPayload = { ...payload, status: 'Screening' };
-        const retry = await supabase
+        let retry = await supabase
           .from('jobs')
-          .update(fallbackPayload)
+          .update(safePayload)
           .eq('id', id)
           .select()
           .single();
-        if (!retry.error && retry.data) {
-          data = { ...retry.data, status: payload.status };
-          error = null;
-        }
-      }
 
-      if (error && (error.code === 'PGRST204' || String(error.message || '').toLowerCase().includes('platform') || JSON.stringify(error).toLowerCase().includes('platform'))) {
-        const legacyPayload = { ...payload };
-        delete legacyPayload.platform;
-        const retry = await supabase
-          .from('jobs')
-          .update(legacyPayload)
-          .eq('id', id)
-          .select()
-          .single();
+        if (retry.error && retry.error.code === 'PGRST116') {
+          delete safePayload.updated_at;
+          retry = await supabase
+            .from('jobs')
+            .insert([safePayload])
+            .select()
+            .single();
+        }
+
         if (!retry.error && retry.data) {
-          data = { ...retry.data, platform: payload.platform || 'MagangHub' };
+          data = retry.data;
           error = null;
         }
       }
 
       if (!error && data) {
         remoteSuccess = true;
-        const updatedData = { ...data, status: jobData.status || data.status, platform: jobData.platform || data.platform || payload.platform || 'MagangHub' };
+        const updatedData = {
+          ...data,
+          status: jobData.status || data.status,
+          platform: jobData.platform || data.platform || 'MagangHub'
+        };
         const currentJobs = getLocalJobs();
         saveLocalJobs(currentJobs.map((j) => (j.id === id ? updatedData : j)));
         return { data: updatedData, isCloud: true, error: null };
