@@ -117,18 +117,13 @@ function AppContent() {
 
     fetchUserJobs();
 
-    // 1. Refetch on Window/Tab Focus
+    // 1. Refetch ONLY when user switches back to Window/Tab
     const handleFocus = () => {
       fetchUserJobs();
     };
     window.addEventListener('focus', handleFocus);
 
-    // 2. Periodic Background Auto-Sync every 8s
-    const interval = setInterval(() => {
-      fetchUserJobs();
-    }, 8000);
-
-    // 3. Supabase Realtime WebSocket Subscription
+    // 2. Supabase Realtime WebSocket Subscription (Refetch ONLY when database changes occur)
     let channel = null;
     if (isSupabaseConfigured()) {
       try {
@@ -145,7 +140,6 @@ function AppContent() {
 
     return () => {
       window.removeEventListener('focus', handleFocus);
-      clearInterval(interval);
       if (channel) {
         supabase.removeChannel(channel);
       }
