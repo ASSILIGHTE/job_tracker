@@ -236,6 +236,22 @@ export const signOutUser = async () => {
 // JOBS CRUD HELPER FUNCTIONS (STRICT SUPABASE DIRECT WRITE)
 // ------------------------------------------
 
+export const encodePlatformInNotes = (notes, platform) => {
+  const clean = (notes || '').replace(/\[PLATFORM:[^\]]+\]/g, '').trim();
+  if (!platform || platform === 'MagangHub') return clean;
+  return clean ? `[PLATFORM:${platform}] ${clean}` : `[PLATFORM:${platform}]`;
+};
+
+export const decodePlatformFromNotes = (notes, nativePlatform) => {
+  if (nativePlatform && nativePlatform !== 'MagangHub') {
+    return { platform: nativePlatform, cleanNotes: (notes || '').replace(/\[PLATFORM:[^\]]+\]/g, '').trim() };
+  }
+  const match = (notes || '').match(/\[PLATFORM:([^\]]+)\]/);
+  const platform = match ? match[1] : (nativePlatform || 'MagangHub');
+  const cleanNotes = (notes || '').replace(/\[PLATFORM:[^\]]+\]/g, '').trim();
+  return { platform, cleanNotes };
+};
+
 const VALID_CLOUD_STATUSES = ['Wishlist', 'Dilamar', 'Screening', 'Sedang Tes', 'Interview', 'Offering', 'Diterima', 'Ditolak'];
 
 export const syncLocalJobsToCloud = async () => {
@@ -253,6 +269,7 @@ export const syncLocalJobsToCloud = async () => {
     let syncedCount = 0;
     for (const job of unsyncedJobs) {
       const safeStatus = VALID_CLOUD_STATUSES.includes(job.status) ? job.status : 'Wishlist';
+      const notesWithTag = encodePlatformInNotes(job.notes, job.platform);
       const payload = {
         company_name: job.company_name,
         position: job.position,
@@ -261,7 +278,7 @@ export const syncLocalJobsToCloud = async () => {
         applied_date: job.applied_date || new Date().toISOString().split('T')[0],
         status: safeStatus,
         salary: job.salary || '',
-        notes: job.notes || '',
+        notes: notesWithTag,
       };
       if (job.user_id) payload.user_id = job.user_id;
 
@@ -292,9 +309,11 @@ export const getJobs = async () => {
         const formattedCloudData = data.map((j) => {
           const loc = localMap.get(j.id);
           const overridePlatform = platformMap[j.id];
+          const decoded = decodePlatformFromNotes(j.notes, j.platform || overridePlatform || loc?.platform);
           return {
             ...j,
-            platform: j.platform || overridePlatform || loc?.platform || 'MagangHub'
+            platform: decoded.platform,
+            notes: decoded.cleanNotes
           };
         });
 
@@ -322,6 +341,7 @@ export const addJob = async (jobData) => {
       const validUserId = authUser?.id && isValidUUID(authUser.id) ? authUser.id : (isValidUUID(generateUUID()) ? generateUUID() : null);
 
       const safeStatus = VALID_CLOUD_STATUSES.includes(jobData.status) ? jobData.status : 'Wishlist';
+      const notesWithTag = encodePlatformInNotes(jobData.notes, jobData.platform);
 
       // 1. Try full payload with all fields
       const fullPayload = {
@@ -333,7 +353,7 @@ export const addJob = async (jobData) => {
         applied_date: jobData.applied_date || new Date().toISOString().split('T')[0],
         status: safeStatus,
         salary: jobData.salary || '',
-        notes: jobData.notes || '',
+        notes: notesWithTag,
       };
       if (validUserId) fullPayload.user_id = validUserId;
 
@@ -353,7 +373,7 @@ export const addJob = async (jobData) => {
           applied_date: jobData.applied_date || new Date().toISOString().split('T')[0],
           status: safeStatus,
           salary: jobData.salary || '',
-          notes: jobData.notes || '',
+          notes: notesWithTag,
         };
         if (validUserId) safePayload.user_id = validUserId;
 
@@ -370,10 +390,12 @@ export const addJob = async (jobData) => {
       }
 
       if (!error && data) {
+        const decoded = decodePlatformFromNotes(data.notes, data.platform || jobData.platform);
         remoteJob = {
           ...data,
           status: jobData.status || data.status,
-          platform: jobData.platform || data.platform || 'MagangHub'
+          platform: decoded.platform,
+          notes: decoded.cleanNotes
         };
         setPlatformOverride(remoteJob.id, remoteJob.platform);
       } else if (error) {
@@ -421,6 +443,7 @@ export const updateJob = async (id, jobData) => {
   if (isSupabaseConfigured()) {
     try {
       const safeStatus = VALID_CLOUD_STATUSES.includes(jobData.status) ? jobData.status : 'Wishlist';
+      const notesWithTag = encodePlatformInNotes(jobData.notes, jobData.platform);
 
       // 1. Try full payload with all fields
       const fullPayload = {
@@ -432,7 +455,7 @@ export const updateJob = async (id, jobData) => {
         applied_date: jobData.applied_date,
         status: safeStatus,
         salary: jobData.salary || '',
-        notes: jobData.notes || '',
+        notes: notesWithTag,
         updated_at: new Date().toISOString()
       };
 
@@ -453,7 +476,7 @@ export const updateJob = async (id, jobData) => {
           applied_date: jobData.applied_date,
           status: safeStatus,
           salary: jobData.salary || '',
-          notes: jobData.notes || '',
+          notes: notesWithTag,
           updated_at: new Date().toISOString()
         };
 
@@ -481,10 +504,12 @@ export const updateJob = async (id, jobData) => {
 
       if (!error && data) {
         remoteSuccess = true;
+        const decoded = decodePlatformFromNotes(data.notes, data.platform || jobData.platform);
         const updatedData = {
           ...data,
           status: jobData.status || data.status,
-          platform: jobData.platform || data.platform || 'MagangHub'
+          platform: decoded.platform,
+          notes: decoded.cleanNotes
         };
         setPlatformOverride(id, updatedData.platform);
         const currentJobs = getLocalJobs();
