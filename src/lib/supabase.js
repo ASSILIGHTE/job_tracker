@@ -269,7 +269,7 @@ export const addJob = async (jobData) => {
         .select()
         .single();
 
-      if (error && error.message.includes("Could not find the 'platform' column")) {
+      if (error && (error.code === 'PGRST204' || String(error.message || '').toLowerCase().includes('platform') || JSON.stringify(error).toLowerCase().includes('platform'))) {
         // Fallback retry without platform column for legacy Supabase schema
         const legacyPayload = { ...payload };
         delete legacyPayload.platform;
@@ -279,7 +279,7 @@ export const addJob = async (jobData) => {
           .select()
           .single();
         if (!retry.error && retry.data) {
-          data = { ...retry.data, platform: payload.platform };
+          data = { ...retry.data, platform: payload.platform || 'MagangHub' };
           error = null;
         }
       }
@@ -349,7 +349,7 @@ export const updateJob = async (id, jobData) => {
         .select()
         .single();
 
-      if (error && error.message.includes("Could not find the 'platform' column")) {
+      if (error && (error.code === 'PGRST204' || String(error.message || '').toLowerCase().includes('platform') || JSON.stringify(error).toLowerCase().includes('platform'))) {
         const legacyPayload = { ...payload };
         delete legacyPayload.platform;
         const retry = await supabase
@@ -359,7 +359,7 @@ export const updateJob = async (id, jobData) => {
           .select()
           .single();
         if (!retry.error && retry.data) {
-          data = { ...retry.data, platform: payload.platform };
+          data = { ...retry.data, platform: payload.platform || 'MagangHub' };
           error = null;
         }
       }
