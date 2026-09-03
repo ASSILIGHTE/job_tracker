@@ -113,9 +113,43 @@ function AppContent() {
   }, [user, addToast]);
 
   useEffect(() => {
-    if (user) {
+    if (!user) return;
+
+    fetchUserJobs();
+
+    // 1. Refetch on Window/Tab Focus
+    const handleFocus = () => {
       fetchUserJobs();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    // 2. Periodic Background Auto-Sync every 8s
+    const interval = setInterval(() => {
+      fetchUserJobs();
+    }, 8000);
+
+    // 3. Supabase Realtime WebSocket Subscription
+    let channel = null;
+    if (isSupabaseConfigured()) {
+      try {
+        channel = supabase
+          .channel('public:jobs_realtime')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs' }, () => {
+            fetchUserJobs();
+          })
+          .subscribe();
+      } catch (e) {
+        console.warn('Realtime subscription warning:', e);
+      }
     }
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(interval);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, [user, fetchUserJobs]);
 
   // ------------------------------------------
