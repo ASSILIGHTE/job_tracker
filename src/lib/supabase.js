@@ -296,6 +296,9 @@ export const syncLocalJobsToCloud = async () => {
 export const getJobs = async () => {
   if (isSupabaseConfigured()) {
     try {
+      // Auto sync local-only jobs to cloud
+      syncLocalJobsToCloud().catch(() => {});
+
       const { data, error } = await supabase
         .from('jobs')
         .select('*')
